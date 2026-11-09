@@ -1,0 +1,26 @@
+# Wöchentlicher Datenbank-Export, weil Supabase Free keine Backups macht.
+# Der Export landet als Artefakt am Workflow-Lauf (90 Tage aufbewahrt) – nur im privaten Repo nutzen.
+name: Datenbank sichern
+
+on:
+  schedule:
+    - cron: "41 2 * * 0" # Sonntag 03:41 Uhr MEZ
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: postgres:17
+    steps:
+      - name: Export
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump "$DB_URL" --schema=public --no-owner --no-privileges --format=custom --file=fred-$(date +%F).dump
+          ls -la fred-*.dump
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fred-backup
+          path: fred-*.dump
+          retention-days: 90

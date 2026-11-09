@@ -1,0 +1,30 @@
+# Holt jeden Montag früh die Angebote der Woche und schreibt sie nach Supabase.
+# Kosten: 0 € (ca. 1–2 Minuten von 2.000 Freiminuten im Monat).
+name: Angebote importieren
+
+on:
+  schedule:
+    - cron: "17 4 * * 1" # Montag 05:17 Uhr MEZ (GitHub rechnet in UTC)
+  workflow_dispatch:
+    inputs:
+      stores:
+        description: "Nur bestimmte Märkte, z. B. aldi-nord,kaufland (leer = alle)"
+        required: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx tsx scripts/import/run.ts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          KAUFLAND_STORE_URL: ${{ vars.KAUFLAND_STORE_URL }}
+          IMPORT_STORES: ${{ inputs.stores }}
