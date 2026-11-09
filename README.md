@@ -77,3 +77,4 @@ npm run import:dry           # Import testen, ohne in die Datenbank zu schreiben
 - **Kein automatisches Backup** bei Supabase Free: `backup.yml` exportiert sonntags; der Export liegt 90 Tage am Workflow-Lauf.
 - **Vercel Hobby** ist nur für private, nicht kommerzielle Nutzung. Bilder werden bewusst ohne `next/image` ausgeliefert.
 - Bezahlte Dienste (Supabase Pro, Vercel Pro, eigene Domain, KI- oder OCR-APIs) sind nicht eingebaut. Vor jeder Änderung daran: erst besprechen.
+
