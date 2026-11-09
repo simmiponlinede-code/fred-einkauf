@@ -22,11 +22,35 @@ async function fetchHtml(url: string): Promise<string> {
   return res.text();
 }
 
+/**
+ * Macht die Project URL robust gegen typische Kopierfehler (Leerzeichen, fehlendes https://,
+ * angehängtes /rest/v1) und erklärt verständlich, was nicht stimmt, ohne den Wert auszugeben.
+ */
+export function cleanSupabaseUrl(raw: string | undefined): string {
+  let v = (raw ?? "").trim().replace(/^["']|["']$/g, "");
+  if (!v) throw new Error("Secret SUPABASE_URL fehlt oder ist leer.");
+  if (/^postgres(ql)?:\/\//i.test(v))
+    throw new Error("SUPABASE_URL enthält die Datenbank-Adresse (postgresql://…). Dort gehört die Project URL hin: https://<projekt>.supabase.co");
+  if (/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i.test(v)) v = `https://${v.match(/project\/([a-z0-9]+)/i)![1]}.supabase.co`;
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+  v = v.replace(/\/(rest|auth)\/v1.*$/i, "").replace(/\/+$/, "");
+  try {
+    const u = new URL(v);
+    if (!u.hostname.endsWith(".supabase.co"))
+      throw new Error("SUPABASE_URL sollte die Project URL sein: https://<projekt>.supabase.co (ist evtl. ein Schlüssel reingerutscht?)");
+  } catch (e) {
+    if (e instanceof TypeError) throw new Error("SUPABASE_URL ist keine gültige Adresse. Erwartet: https://<projekt>.supabase.co");
+    throw e;
+  }
+  return v;
+}
+
 async function main() {
   const ctx: AdapterContext = { today: new Date(), fetchHtml };
+  if (!dry && !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) throw new Error("Secret SUPABASE_SERVICE_ROLE_KEY fehlt oder ist leer.");
   const db = dry
     ? null
-    : createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    : createClient(cleanSupabaseUrl(process.env.SUPABASE_URL), process.env.SUPABASE_SERVICE_ROLE_KEY!.trim(), {
         auth: { persistSession: false },
       });
 
@@ -87,4 +111,8 @@ async function main() {
   if (failed) process.exitCode = 1; // GitHub schickt dann eine Mail über den fehlgeschlagenen Lauf
 }
 
-main();
+if (process.argv[1]?.endsWith("run.ts"))
+  main().catch((e) => {
+    console.error(`✗ ${e instanceof Error ? e.message : e}`);
+    process.exit(1);
+  });
