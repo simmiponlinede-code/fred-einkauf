@@ -9,7 +9,7 @@ import { aldiNord } from "./adapters/aldi-nord";
 import { kaufland } from "./adapters/kaufland";
 import { edeka, lidl, netto } from "./adapters/pending";
 import type { Adapter, AdapterContext } from "./types";
-import { isAllowed, normalizeOffer, USER_AGENT } from "./util";
+import { cleanSupabaseUrl, isAllowed, normalizeOffer, USER_AGENT } from "./util";
 
 const ADAPTERS: Adapter[] = [aldiNord, kaufland, lidl, netto, edeka];
 const dry = process.argv.includes("--dry");
@@ -20,29 +20,6 @@ async function fetchHtml(url: string): Promise<string> {
   const res = await fetch(url, { headers: { "user-agent": USER_AGENT, "accept-language": "de-DE" } });
   if (!res.ok) throw new Error(`${url} antwortet mit HTTP ${res.status}`);
   return res.text();
-}
-
-/**
- * Macht die Project URL robust gegen typische Kopierfehler (Leerzeichen, fehlendes https://,
- * angehängtes /rest/v1) und erklärt verständlich, was nicht stimmt, ohne den Wert auszugeben.
- */
-export function cleanSupabaseUrl(raw: string | undefined): string {
-  let v = (raw ?? "").trim().replace(/^["']|["']$/g, "");
-  if (!v) throw new Error("Secret SUPABASE_URL fehlt oder ist leer.");
-  if (/^postgres(ql)?:\/\//i.test(v))
-    throw new Error("SUPABASE_URL enthält die Datenbank-Adresse (postgresql://…). Dort gehört die Project URL hin: https://<projekt>.supabase.co");
-  if (/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i.test(v)) v = `https://${v.match(/project\/([a-z0-9]+)/i)![1]}.supabase.co`;
-  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
-  v = v.replace(/\/(rest|auth)\/v1.*$/i, "").replace(/\/+$/, "");
-  try {
-    const u = new URL(v);
-    if (!u.hostname.endsWith(".supabase.co"))
-      throw new Error("SUPABASE_URL sollte die Project URL sein: https://<projekt>.supabase.co (ist evtl. ein Schlüssel reingerutscht?)");
-  } catch (e) {
-    if (e instanceof TypeError) throw new Error("SUPABASE_URL ist keine gültige Adresse. Erwartet: https://<projekt>.supabase.co");
-    throw e;
-  }
-  return v;
 }
 
 async function main() {
@@ -111,8 +88,7 @@ async function main() {
   if (failed) process.exitCode = 1; // GitHub schickt dann eine Mail über den fehlgeschlagenen Lauf
 }
 
-if (process.argv[1]?.endsWith("run.ts"))
-  main().catch((e) => {
-    console.error(`✗ ${e instanceof Error ? e.message : e}`);
-    process.exit(1);
-  });
+main().catch((e) => {
+  console.error(`✗ ${e instanceof Error ? e.message : e}`);
+  process.exit(1);
+});

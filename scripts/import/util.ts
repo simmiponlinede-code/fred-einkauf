@@ -64,3 +64,26 @@ export function normalizeOffer(o: RawOffer): NormalizedOffer {
   if (base) return { ...o, amount: null, unit: base.unit, unit_price_cents: base.cents };
   return { ...o, amount: null, unit: null, unit_price_cents: null };
 }
+
+/**
+ * Macht die Project URL robust gegen typische Kopierfehler (Leerzeichen, fehlendes https://,
+ * angehängtes /rest/v1) und erklärt verständlich, was nicht stimmt, ohne den Wert auszugeben.
+ */
+export function cleanSupabaseUrl(raw: string | undefined): string {
+  let v = (raw ?? "").trim().replace(/^["']|["']$/g, "");
+  if (!v) throw new Error("Secret SUPABASE_URL fehlt oder ist leer.");
+  if (/^postgres(ql)?:\/\//i.test(v))
+    throw new Error("SUPABASE_URL enthält die Datenbank-Adresse (postgresql://…). Dort gehört die Project URL hin: https://<projekt>.supabase.co");
+  if (/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i.test(v)) v = `https://${v.match(/project\/([a-z0-9]+)/i)![1]}.supabase.co`;
+  if (!/^https?:\/\//i.test(v)) v = `https://${v}`;
+  v = v.replace(/\/(rest|auth)\/v1.*$/i, "").replace(/\/+$/, "");
+  try {
+    const u = new URL(v);
+    if (!u.hostname.endsWith(".supabase.co"))
+      throw new Error("SUPABASE_URL sollte die Project URL sein: https://<projekt>.supabase.co (ist evtl. ein Schlüssel reingerutscht?)");
+  } catch (e) {
+    if (e instanceof TypeError) throw new Error("SUPABASE_URL ist keine gültige Adresse. Erwartet: https://<projekt>.supabase.co");
+    throw e;
+  }
+  return v;
+}

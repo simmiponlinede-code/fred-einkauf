@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanSupabaseUrl } from "./run";
+import { cleanSupabaseUrl } from "./util";
 
 describe("cleanSupabaseUrl", () => {
   it.each([
