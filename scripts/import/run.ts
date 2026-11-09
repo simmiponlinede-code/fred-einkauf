@@ -13,7 +13,8 @@ import { cleanSupabaseUrl, isAllowed, normalizeOffer, USER_AGENT } from "./util"
 
 const ADAPTERS: Adapter[] = [aldiNord, kaufland, lidl, netto, edeka];
 const dry = process.argv.includes("--dry");
-const only = process.env.IMPORT_STORES?.split(",").map((s) => s.trim());
+// Leeres Feld beim Start von Hand = alle Märkte
+const only = process.env.IMPORT_STORES?.split(",").map((s) => s.trim()).filter(Boolean);
 
 async function fetchHtml(url: string): Promise<string> {
   if (!(await isAllowed(url))) throw new Error(`robots.txt verbietet ${url}`);
@@ -38,7 +39,10 @@ async function main() {
 
   let failed = 0;
   for (const adapter of ADAPTERS) {
-    if (only && !only.includes(adapter.store)) continue;
+    if (only?.length && !only.includes(adapter.store)) {
+      console.log(`– ${adapter.store}: nicht ausgewählt`);
+      continue;
+    }
     if (!adapter.ready) {
       console.log(`– ${adapter.store}: Adapter noch nicht gebaut, übersprungen`);
       continue;
