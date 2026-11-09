@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseAldi } from "./adapters/aldi-nord";
+import { parseAldi, parseAldiNextData } from "./adapters/aldi-nord";
 import { parseKaufland } from "./adapters/kaufland";
 import { normalizeOffer } from "./util";
 
@@ -35,6 +35,32 @@ describe("Aldi Nord", () => {
     expect(joghurt).toMatchObject({ unit: "kg", amount: 150, unit_price_cents: 220 });
     const kuerbis = normalizeOffer(offers.find((o) => o.title.startsWith("Speisekürbis"))!);
     expect(kuerbis).toMatchObject({ unit: "kg", unit_price_cents: 119 });
+  });
+});
+
+describe("Aldi Nord über eingebettete Seitendaten", () => {
+  const offers = parseAldiNextData(html("aldi-nextdata.html"), today);
+
+  it("liest Artikel mit Preis, UVP, Packung und Gültigkeit", () => {
+    expect(offers).toHaveLength(2); // Artikel ohne Preis fällt raus
+    expect(offers.find((o) => o.title === "Haltbare Landmilch")).toMatchObject({
+      brand: "LANDLIEBE",
+      price_cents: 88,
+      was_price_cents: 145,
+      pack_text: "1-L-Packung",
+      valid_from: "2026-11-09",
+      valid_to: "2026-11-14",
+    });
+  });
+
+  it("nimmt das Datum aus dem Zeitstempel, wenn keine Aktionsdaten da sind", () => {
+    const k = offers.find((o) => o.title.startsWith("Speisekürbis"))!;
+    expect(k.valid_from).toBe("2026-11-12");
+    expect(normalizeOffer(k)).toMatchObject({ unit: "kg", unit_price_cents: 119 });
+  });
+
+  it("parseAldi bevorzugt die Seitendaten", () => {
+    expect(parseAldi(html("aldi-nextdata.html"), today)).toHaveLength(2);
   });
 });
 

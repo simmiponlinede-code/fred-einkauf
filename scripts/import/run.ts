@@ -52,6 +52,8 @@ async function main() {
       const offers = raw.map(normalizeOffer);
       console.log(`✓ ${adapter.store}: ${offers.length} Angebote`);
       if (offers.length === 0) throw new Error("0 Angebote gefunden – hat sich die Seite geändert?");
+      const noUnit = offers.filter((o) => !o.unit).length;
+      if (noUnit) console.log(`   ${noUnit} ohne erkennbare Menge (werden gespeichert, aber nicht verglichen)`);
 
       if (dry) {
         for (const o of offers.slice(0, 15))
@@ -59,7 +61,10 @@ async function main() {
         continue;
       }
 
-      const rows = offers.map(({ amount, ...o }) => ({ ...o, amount, store_id: adapter.store, base_price_text: undefined }));
+      // Doppelte Schlüssel entfernen (sonst lehnt Postgres das Upsert ab) und nur echte Spalten senden
+      const unique = [...new Map(offers.map((o) => [o.source_key, o])).values()];
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const rows = unique.map(({ base_price_text: _ignored, ...o }) => ({ ...o, store_id: adapter.store }));
       const { data: saved, error } = await db!
         .from("offers")
         .upsert(rows, { onConflict: "store_id,source_key" })
@@ -82,7 +87,8 @@ async function main() {
       await db!.from("import_runs").insert({ store_id: adapter.store, ok: true, offers_found: offers.length });
     } catch (e) {
       failed++;
-      const message = e instanceof Error ? e.message : String(e);
+      const message =
+        e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : JSON.stringify(e);
       console.error(`✗ ${adapter.store}: ${message}`);
       if (db) await db.from("import_runs").insert({ store_id: adapter.store, ok: false, message });
     }
