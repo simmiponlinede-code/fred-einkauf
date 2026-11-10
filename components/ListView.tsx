@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { addFreeItem, deleteItem, queueCheck, setChecked, setMatch, type HouseholdData, type ListItem, type Product } from "@/lib/data";
+import { addFreeItem, deleteItem, queueCheck, setChecked, setMatch, setQty, type HouseholdData, type ListItem, type Product } from "@/lib/data";
 import type { Analysis, Pick } from "@/lib/pricing";
 import { formatEuro } from "@/lib/units";
 import { CATEGORIES, categoryIndex, Confetti, Fred, pct, PriceTag, STORE_NAMES, StoreChip, unitPrice } from "./shared";
@@ -86,6 +86,12 @@ export default function ListView({
     } catch {
       queueCheck(item.id, checked); // kein Netz im Laden: später nachholen
     }
+  }
+
+  async function changeQty(item: ListItem, qty: number) {
+    const q = Math.max(1, Math.min(99, qty));
+    onChange({ ...data, items: data.items.map((i) => (i.id === item.id ? { ...i, qty: q } : i)) });
+    await setQty(item.id, q).catch(reload);
   }
 
   async function addFree(e: React.FormEvent) {
@@ -180,6 +186,7 @@ export default function ListView({
               onToggle={toggle}
               onRemove={remove}
               onJudge={judge}
+              onQty={changeQty}
             />
           ))}
         </div>
@@ -202,6 +209,7 @@ export default function ListView({
               onToggle={toggle}
               onRemove={remove}
               onJudge={judge}
+              onQty={changeQty}
             />
           ))}
         </>
@@ -230,6 +238,7 @@ function ItemRow({
   onToggle,
   onRemove,
   onJudge,
+  onQty,
 }: {
   r: Row;
   a: Analysis | undefined;
@@ -239,9 +248,11 @@ function ItemRow({
   onToggle: (item: ListItem, checked: boolean) => void;
   onRemove: (item: ListItem) => void;
   onJudge: (p: Pick, productId: string, ok: boolean) => void;
+  onQty: (item: ListItem, qty: number) => void;
 }) {
   const isDone = !!r.item.checked_at;
   const free = !r.product;
+  const qty = r.item.qty ?? 1;
   return (
     <article className={`card row${isDone ? " done" : ""}${free ? " free" : ""}`}>
       <label className="chk">
@@ -249,7 +260,21 @@ function ItemRow({
         <span />
       </label>
       <div className="title">
-        <b>{r.name}</b>
+        <b>
+          {qty > 1 && <span className="qtyx">{qty}× </span>}
+          {r.name}
+        </b>
+        {!isDone && (
+          <div className="stepper" role="group" aria-label={`Anzahl ${r.name}`}>
+            <button onClick={() => onQty(r.item, qty - 1)} disabled={qty <= 1} aria-label="eins weniger">
+              −
+            </button>
+            <span aria-live="polite">{qty}</span>
+            <button onClick={() => onQty(r.item, qty + 1)} aria-label="eins mehr">
+              +
+            </button>
+          </div>
+        )}
         {who && <div className="who">abgehakt von {who}</div>}
         {shopMode && a?.best && !isDone && (
           <div className="who">
@@ -276,6 +301,7 @@ function ItemRow({
                 {a.best.needsCard && <span className="chip amber">mit Card/App</span>}
                 {a.isDeal && a.saving != null && <span className="chip hot">−{pct(a.saving)}</span>}
                 {a.isHistoryLow && <span className="chip mint">günstigster Preis bisher</span>}
+                {qty > 1 && <span className="chip soft">{qty} × = {formatEuro(a.best.price_cents * qty)}</span>}
               </div>
             )}
             {a.cheaperNormalElsewhere && a.offers[0] && (

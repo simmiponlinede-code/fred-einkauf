@@ -133,7 +133,8 @@ export default function FredApp() {
   const hello = greeting(data.members.find((m) => m.user_id === data.me)?.display_name);
   const active = data.products.filter((p) => p.active);
   const deals = active.filter((p) => analyses.get(p.id)?.isDeal);
-  const total = active.reduce((s, p) => s + (analyses.get(p.id)?.best?.price_cents ?? 0), 0);
+  const qtyOf = new Map(data.items.filter((i) => i.product_id).map((i) => [i.product_id!, i.qty ?? 1]));
+  const total = active.reduce((s, p) => s + (analyses.get(p.id)?.best?.price_cents ?? 0) * (qtyOf.get(p.id) ?? 1), 0);
   const stores = new Set(active.map((p) => analyses.get(p.id)?.best?.store_id).filter(Boolean));
   const bestSaving = deals
     .map((p) => ({ p, s: analyses.get(p.id)!.saving ?? 0 }))
@@ -206,7 +207,7 @@ export default function FredApp() {
         </div>
         <div className="stat">
           <span className="n">{formatEuro(total)}</span>
-          <span className="l">je 1 Packung zum besten Preis</span>
+          <span className="l">eure Liste zum besten Preis</span>
         </div>
         <div className="stat">
           <span className="n">{stores.size}</span>
@@ -230,7 +231,7 @@ export default function FredApp() {
       </nav>
 
       {tab === "liste" && <ListView data={data} analyses={analyses} onChange={setData} reload={reload} />}
-      {tab === "maerkte" && <StoresView data={data} analyses={analyses} useCard={useCard} />}
+      {tab === "maerkte" && <StoresView data={data} analyses={analyses} useCard={useCard} onChanged={reload} />}
       {tab === "bon" && <BonView data={data} onSaved={reload} />}
       {tab === "verwalten" && <ManageView data={data} onChanged={reload} useCard={useCard} setUseCard={setUseCard} />}
 

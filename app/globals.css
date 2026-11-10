@@ -266,3 +266,15 @@ form.freeadd { grid-template-columns: 1fr auto; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent-deep); box-shadow: var(--shadow); }
 .setting { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .setting .grow { flex: 1; min-width: 160px; }
+
+/* Mengen */
+.qtyx { color: var(--accent-deep); }
+.stepper { display: inline-flex; align-items: center; gap: 2px; margin-top: 4px; background: var(--soft); border-radius: 999px; padding: 2px; }
+.stepper button { width: 26px; height: 26px; border: 0; border-radius: 50%; background: var(--surface); color: var(--accent-deep); font: 700 15px/1 var(--font-display); cursor: pointer; }
+.stepper button:disabled { opacity: .4; cursor: default; }
+.stepper span { min-width: 22px; text-align: center; font: 700 13px var(--font-display); font-variant-numeric: tabular-nums; }
+.shopmode .stepper { display: none; }
+.shopmode .qtyx { font-size: 21px; }
+.mineoffers { width: 100%; display: grid; gap: 6px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.mineoffers .line { flex-wrap: nowrap; }
+.mineoffers .xbtn { width: 24px; height: 24px; font-size: 15px; margin-left: auto; }

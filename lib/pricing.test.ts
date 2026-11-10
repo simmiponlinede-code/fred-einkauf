@@ -137,3 +137,11 @@ describe("Zuordnung", () => {
     ["Fruchtquark Mager", false],
   ])("%s", (t, ok) => expect(matches(t, magerquark)).toBe(ok));
 });
+
+describe("Einkaufsplan mit Mengen", () => {
+  it("rechnet die Anzahl Packungen mit", () => {
+    const pick = (store_id: "kaufland" | "aldi-nord", price_cents: number) => ({ kind: "normal" as const, store_id, label: "", price_cents, unit_price_cents: price_cents, unit: "kg" as const });
+    const r = planShopping([{ productId: "quark", qty: 4, candidates: [pick("kaufland", 119), pick("aldi-nord", 129)] }], ["kaufland", "aldi-nord"]);
+    expect(r.recommended?.totalCents).toBe(476);
+  });
+});

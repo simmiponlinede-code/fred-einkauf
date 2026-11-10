@@ -6,6 +6,7 @@ export type PriceSource = "bon" | "shop" | "manuell" | "import";
 
 export interface Offer {
   id: string;
+  household_id?: string | null; // gesetzt = selbst eingetragen
   store_id: StoreId;
   title: string;
   brand?: string | null;
@@ -180,11 +181,12 @@ export function historyLow(offers: Offer[], obs: Observation[], unit: BaseUnit, 
 export interface PlanItem {
   productId: string;
   candidates: Pick[]; // alle Angebote und Normalpreise des Produkts
+  qty?: number; // Anzahl Packungen, Standard 1
 }
 
 export interface Plan {
   stores: StoreId[];
-  totalCents: number; // je 1 Packung zum besten Preis
+  totalCents: number; // gewünschte Anzahl Packungen zum besten Preis
   covered: number; // wie viele Produkte es dort gibt
   assignments: { productId: string; pick: Pick | null }[];
 }
@@ -198,7 +200,7 @@ function planFor(stores: StoreId[], items: PlanItem[]): Plan {
         .filter((c) => stores.includes(c.store_id))
         .sort((a, b) => a.price_cents - b.price_cents)[0] ?? null;
     if (pick) {
-      total += pick.price_cents;
+      total += pick.price_cents * (it.qty ?? 1);
       covered++;
     }
     return { productId: it.productId, pick };

@@ -29,6 +29,7 @@ export interface ListItem {
   checked_at: string | null;
   category?: string | null;
   created_by?: string | null;
+  qty?: number;
 }
 
 export interface Member {
@@ -276,4 +277,54 @@ export async function savePushSubscription(householdId: string, sub: PushSubscri
 
 export async function deletePushSubscription(endpoint: string) {
   must(await supabase().from("push_subscriptions").delete().eq("endpoint", endpoint));
+}
+
+/** Anzahl auf der Liste ändern (1–99). */
+export async function setQty(itemId: string, qty: number) {
+  must(await supabase().from("list_items").update({ qty: Math.max(1, Math.min(99, Math.round(qty))) }).eq("id", itemId));
+}
+
+/** Selbst gesehenes Angebot eintragen (z. B. aus dem Lidl-Prospekt) und direkt dem Produkt zuordnen. */
+export async function addManualOffer(o: {
+  householdId: string;
+  productId: string;
+  store: string;
+  title: string;
+  priceCents: number;
+  cardPriceCents: number | null;
+  packText: string;
+  amount: number;
+  unit: BaseUnit;
+  unitPriceCents: number;
+  validFrom: string;
+  validTo: string;
+}) {
+  const db = supabase();
+  const offer = must(
+    await db
+      .from("offers")
+      .insert({
+        household_id: o.householdId,
+        store_id: o.store,
+        source_key: `manuell|${crypto.randomUUID()}`,
+        title: o.title,
+        price_cents: o.priceCents,
+        card_price_cents: o.cardPriceCents,
+        pack_text: o.packText,
+        amount: o.amount,
+        unit: o.unit,
+        unit_price_cents: o.unitPriceCents,
+        valid_from: o.validFrom,
+        valid_to: o.validTo,
+        source_url: null,
+      })
+      .select()
+      .single(),
+  ) as Offer;
+  must(await db.from("offer_matches").insert({ offer_id: offer.id, product_id: o.productId, household_id: o.householdId, confirmed: true }));
+  return offer;
+}
+
+export async function deleteManualOffer(offerId: string) {
+  must(await supabase().from("offers").delete().eq("id", offerId));
 }
