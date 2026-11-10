@@ -1,9 +1,12 @@
 "use client";
-// Übergabe-Seite für Zulieferer (die wöchentliche Claude-Aufgabe).
-// Aufruf: /import#<Zugangscode>. Der Code steht nur im Adress-Anker und geht nie an Vercel.
-// Die Seite zeigt die Produktliste als Text und nimmt Angebote als JSON entgegen.
-import { useEffect, useRef, useState } from "react";
+// Übergabe-Seite für Zulieferer (die wöchentliche Claude-Aufgabe im eingebauten Browser).
+// Einrichtung einmalig: angemeldet „Zugang für diesen Browser einrichten“ tippen. Der Code wird nur
+// in diesem Browser gespeichert (und als Hash in der Datenbank); er darf ausschließlich Angebote für
+// Lidl, Netto und Edeka eintragen. Danach zeigt die Seite die Produktliste und nimmt JSON entgegen.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+
+const KEY = "fred-import-token";
 
 interface P {
   slug: string;
@@ -13,29 +16,71 @@ interface P {
   allowed_stores: string[];
 }
 
+type State = "loading" | "setup" | "login" | "ready" | "error";
+
 export default function ImportPage() {
   const token = useRef("");
-  const [products, setProducts] = useState<P[] | null>(null);
+  const [state, setState] = useState<State>("loading");
+  const [products, setProducts] = useState<P[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [json, setJson] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const load = useCallback(async (t: string) => {
+    token.current = t;
+    const { data, error } = await supabase().rpc("import_products", { token: t });
+    if (error) {
+      setError(`Zugang abgelehnt: ${error.message}`);
+      setState("error");
+    } else {
+      setProducts(data as P[]);
+      setState("ready");
+    }
+  }, []);
+
   useEffect(() => {
-    const t = decodeURIComponent(window.location.hash.slice(1));
-    if (!t) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- einmalig beim Laden aus der Adresse
-      setError("Kein Zugangscode in der Adresse (/import#CODE).");
+    let stored = "";
+    try {
+      stored = decodeURIComponent(window.location.hash.slice(1)) || localStorage.getItem(KEY) || "";
+    } catch {
+      /* ohne Speicher */
+    }
+    if (stored) {
+      void Promise.resolve(stored).then(load); // asynchron, nicht direkt im Effekt
       return;
     }
-    token.current = t;
     supabase()
-      .rpc("import_products", { token: t })
-      .then(({ data, error }) => {
-        if (error) setError(`Zugangscode abgelehnt: ${error.message}`);
-        else setProducts(data as P[]);
-      });
-  }, []);
+      .auth.getSession()
+      .then(({ data: { session } }) => setState(session ? "setup" : "login"));
+  }, [load]);
+
+  async function setup() {
+    setBusy(true);
+    const { data, error } = await supabase().rpc("create_import_token", { label: "Claude-Aufgabe" });
+    setBusy(false);
+    if (error) {
+      setError(`Einrichtung fehlgeschlagen: ${error.message}. Wurde die Migration 0004 ausgeführt?`);
+      setState("error");
+      return;
+    }
+    try {
+      localStorage.setItem(KEY, data as string);
+    } catch {
+      /* ignorieren */
+    }
+    load(data as string);
+  }
+
+  function forget() {
+    try {
+      localStorage.removeItem(KEY);
+    } catch {
+      /* ignorieren */
+    }
+    window.location.hash = "";
+    window.location.reload();
+  }
 
   async function send() {
     setBusy(true);
@@ -54,16 +99,45 @@ export default function ImportPage() {
     if (!error) setJson("");
   }
 
-  const stores = products?.[0]?.allowed_stores ?? [];
   return (
     <main className="wrap">
       <div className="card review">
         <h1 style={{ fontSize: 22 }}>Fred · Angebote einliefern</h1>
-        {error && <p className="err">{error}</p>}
-        {products && (
+
+        {state === "loading" && <p className="note">Lade …</p>}
+
+        {state === "login" && (
+          <p className="note">
+            Für die Einrichtung einmal <a href="/login?next=/import">in Fred anmelden</a>, dann kommst du automatisch hierher zurück.
+          </p>
+        )}
+
+        {state === "setup" && (
           <>
             <p className="note">
-              Erlaubte Märkte: {stores.join(", ")}. Heute: {new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })}.
+              Richte diesen Browser als Zulieferer ein. Fred speichert dafür einen Zugangscode nur hier im Browser. Der Code kann
+              ausschließlich Angebote für Lidl, Netto und Edeka eintragen, sonst nichts.
+            </p>
+            <button className="btn primary" onClick={setup} disabled={busy}>
+              {busy ? "Richte ein …" : "Zugang für diesen Browser einrichten"}
+            </button>
+          </>
+        )}
+
+        {state === "error" && (
+          <>
+            <p className="err">{error}</p>
+            <button className="btn ghost" onClick={forget}>
+              Gespeicherten Zugang entfernen
+            </button>
+          </>
+        )}
+
+        {state === "ready" && (
+          <>
+            <p id="status" className="note">
+              ✓ Zugang aktiv. Erlaubte Märkte: {products[0]?.allowed_stores.join(", ") ?? "–"}. Heute:{" "}
+              {new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })}.
             </p>
             <pre className="importlist" aria-label="Produktliste">
               {products.map((p) => `${p.slug} | ${p.name} | Einheit ${p.unit}${p.pack_hint ? ` | üblich ${p.pack_hint}` : ""}`).join("\n")}
@@ -79,8 +153,12 @@ export default function ImportPage() {
             <button id="angebote-senden" className="btn primary" onClick={send} disabled={busy || !json.trim()}>
               {busy ? "Sende …" : "Angebote übertragen"}
             </button>
+            <button className="btn ghost" onClick={forget}>
+              Zugang in diesem Browser entfernen
+            </button>
           </>
         )}
+
         {result && (
           <p id="ergebnis" className={result.startsWith("FEHLER") ? "err" : "note"}>
             {result}

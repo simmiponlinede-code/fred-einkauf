@@ -34,7 +34,9 @@ export default function Login() {
     try {
       const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
       if (!error) {
-        router.replace("/");
+        // nach der Anmeldung zurück, z. B. zur Einrichtung unter /import (nur interne Pfade)
+        const next = new URLSearchParams(window.location.search).get("next");
+        router.replace(next && /^\/[a-z]/.test(next) && !next.startsWith("//") ? next : "/");
         return;
       }
       const code = (error as { code?: string }).code ?? "";

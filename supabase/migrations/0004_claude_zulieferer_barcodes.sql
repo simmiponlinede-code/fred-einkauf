@@ -25,6 +25,23 @@ create or replace function token_household(token text) returns uuid
 $$;
 revoke all on function token_household(text) from public;
 
+-- Neuen Zugangscode erzeugen (nur angemeldete Haushaltsmitglieder). Gibt den Code genau einmal
+-- zurück; gespeichert wird nur sein Hash. Ein neuer Code mit gleichem Namen ersetzt den alten.
+create or replace function create_import_token(label text) returns text
+  language plpgsql security definer volatile set search_path = public as $$
+declare
+  hh uuid := my_household();
+  tok text := 'fred_' || replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+begin
+  if hh is null then raise exception 'Nicht angemeldet oder kein Haushalt'; end if;
+  delete from import_tokens t where t.household_id = hh and t.label = create_import_token.label;
+  insert into import_tokens (household_id, token_hash, label)
+  values (hh, encode(sha256(convert_to(tok, 'UTF8')), 'hex'), create_import_token.label);
+  return tok;
+end $$;
+revoke all on function create_import_token(text) from public, anon;
+grant execute on function create_import_token(text) to authenticated;
+
 -- Produktliste für den Zulieferer (nur Namen und Einheiten, keine Preise oder Bons)
 create or replace function import_products(token text)
   returns table (slug text, name text, unit base_unit, pack_hint text, allowed_stores text[])
