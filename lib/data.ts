@@ -17,6 +17,7 @@ export interface Product {
   pack_hint: string | null;
   active: boolean;
   sort: number;
+  category: string;
 }
 
 export interface ListItem {
@@ -26,6 +27,8 @@ export interface ListItem {
   free_text: string | null;
   checked_by: string | null;
   checked_at: string | null;
+  category?: string | null;
+  created_by?: string | null;
 }
 
 export interface Member {
@@ -40,10 +43,13 @@ export interface Store {
 
 export interface HouseholdData {
   householdId: string;
+  me: string; // eigene user_id
   members: Member[];
   stores: Store[];
   products: Product[];
   offersByProduct: Map<string, Offer[]>;
+  /** `${offerId}|${productId}` → true (bestätigt) oder null (Vorschlag); abgelehnte fehlen */
+  matchState: Map<string, boolean | null>;
   obsByProduct: Map<string, Observation[]>;
   listId: string;
   items: ListItem[];
@@ -57,6 +63,7 @@ function must<T>(r: { data: T | null; error: unknown }): T {
 
 export async function loadHousehold(): Promise<HouseholdData> {
   const db = supabase();
+  const me = (await db.auth.getUser()).data.user?.id ?? "";
   const householdId = must(await db.rpc("my_household")) as string | null;
   if (!householdId) throw new Error("Dein Konto ist noch keinem Haushalt zugeordnet (setup_household.sql ausführen).");
 
@@ -74,8 +81,10 @@ export async function loadHousehold(): Promise<HouseholdData> {
   ]);
 
   const offersByProduct = new Map<string, Offer[]>();
-  for (const m of must(matches) as unknown as { product_id: string; offers: Offer }[]) {
+  const matchState = new Map<string, boolean | null>();
+  for (const m of must(matches) as unknown as { product_id: string; confirmed: boolean | null; offers: Offer }[]) {
     if (!m.offers) continue;
+    matchState.set(`${m.offers.id}|${m.product_id}`, m.confirmed);
     const arr = offersByProduct.get(m.product_id) ?? [];
     arr.push(m.offers);
     offersByProduct.set(m.product_id, arr);
@@ -91,6 +100,8 @@ export async function loadHousehold(): Promise<HouseholdData> {
 
   return {
     householdId,
+    me,
+    matchState,
     members: must(members) as Member[],
     stores: must(stores) as Store[],
     products: must(products) as Product[],
@@ -138,12 +149,12 @@ export async function setChecked(itemId: string, checked: boolean) {
 }
 
 /** Live-Abhaken: meldet Änderungen der Liste vom Partner. */
-export function subscribeList(listId: string, onChange: (item: ListItem) => void) {
+export function subscribeList(listId: string, onChange: (item: ListItem, deleted: boolean) => void) {
   const db = supabase();
   const channel = db
     .channel(`list-${listId}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "list_items", filter: `list_id=eq.${listId}` }, (p) =>
-      onChange(p.new as ListItem),
+      p.eventType === "DELETE" ? onChange(p.old as ListItem, true) : onChange(p.new as ListItem, false),
     )
     .subscribe();
   return () => {
@@ -167,4 +178,102 @@ export async function upsertProduct(p: Partial<Product> & { household_id: string
 
 export async function addObservation(o: Observation & { amount: number; product_id: string; household_id: string; receipt_id?: string }) {
   must(await supabase().from("price_observations").insert(o));
+}
+
+/** Angebot für ein Produkt bestätigen (true) oder ablehnen (false). Abgelehnte kommen nicht wieder. */
+export async function setMatch(offerId: string, productId: string, confirmed: boolean) {
+  must(await supabase().from("offer_matches").update({ confirmed }).eq("offer_id", offerId).eq("product_id", productId));
+}
+
+/** Einmaliges auf die Liste, z. B. „Spülmittel“. */
+export async function addFreeItem(listId: string, householdId: string, text: string, category: string | null = null) {
+  return must(
+    await supabase().from("list_items").insert({ list_id: listId, household_id: householdId, free_text: text, category }).select().single(),
+  ) as ListItem;
+}
+
+export async function deleteItem(itemId: string) {
+  must(await supabase().from("list_items").delete().eq("id", itemId));
+}
+
+// ---------------------------------------------------------------
+// Offline: letzter Stand im Gerät, damit die Liste im Funkloch bleibt
+// ---------------------------------------------------------------
+const CACHE_KEY = "fred-cache-v1";
+const QUEUE_KEY = "fred-queue-v1";
+
+export function saveSnapshot(d: HouseholdData) {
+  try {
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        ...d,
+        savedAt: new Date().toISOString(),
+        offersByProduct: [...d.offersByProduct],
+        obsByProduct: [...d.obsByProduct],
+        matchState: [...d.matchState],
+      }),
+    );
+  } catch {
+    /* Speicher voll oder privat: dann eben ohne Offline-Kopie */
+  }
+}
+
+export function loadSnapshot(): (HouseholdData & { savedAt: string }) | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    return { ...j, offersByProduct: new Map(j.offersByProduct), obsByProduct: new Map(j.obsByProduct), matchState: new Map(j.matchState) };
+  } catch {
+    return null;
+  }
+}
+
+/** Abhaken ohne Netz merken und später nachholen. */
+export function queueCheck(itemId: string, checked: boolean) {
+  try {
+    const q: Record<string, boolean> = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? "{}");
+    q[itemId] = checked;
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+  } catch {
+    /* ignorieren */
+  }
+}
+
+export async function flushQueue(): Promise<number> {
+  let q: Record<string, boolean> = {};
+  try {
+    q = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? "{}");
+  } catch {
+    return 0;
+  }
+  let done = 0;
+  for (const [id, checked] of Object.entries(q)) {
+    try {
+      await setChecked(id, checked);
+      delete q[id];
+      done++;
+    } catch {
+      break; // immer noch offline
+    }
+  }
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+  return done;
+}
+
+// ---------------------------------------------------------------
+// Push-Abo speichern
+// ---------------------------------------------------------------
+export async function savePushSubscription(householdId: string, sub: PushSubscription) {
+  const j = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+  must(
+    await supabase()
+      .from("push_subscriptions")
+      .upsert({ household_id: householdId, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, { onConflict: "endpoint" }),
+  );
+}
+
+export async function deletePushSubscription(endpoint: string) {
+  must(await supabase().from("push_subscriptions").delete().eq("endpoint", endpoint));
 }

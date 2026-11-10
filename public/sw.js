@@ -1,6 +1,6 @@
 // Fred Service Worker: hält die App-Hülle und Fred-Bilder offline bereit.
 // Supabase-Anfragen gehen immer ins Netz, damit Preise und Liste aktuell sind.
-const CACHE = "fred-v1";
+const CACHE = "fred-v2";
 const SHELL = ["/", "/login", "/icon-192.png", "/fred/fred-1-begruessung.webp", "/fred/fred-8-profilbild.webp"];
 
 self.addEventListener("install", (e) => {
@@ -45,4 +45,34 @@ self.addEventListener("fetch", (e) => {
       ),
     );
   }
+});
+
+// Push vom Montags-Import
+self.addEventListener("push", (e) => {
+  let d = { title: "Fred", body: "Neue Angebote sind da.", url: "/" };
+  try {
+    d = { ...d, ...e.data.json() };
+  } catch {
+    /* Text statt JSON */
+  }
+  e.waitUntil(
+    self.registration.showNotification(d.title, {
+      body: d.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: "fred-weekly",
+      data: { url: d.url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ("focus" in c) return c.navigate(url).then((w) => (w || c).focus());
+      return self.clients.openWindow(url);
+    }),
+  );
 });

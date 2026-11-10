@@ -5,6 +5,7 @@
 // Aufruf lokal ohne Datenbank (nur anzeigen): npx tsx scripts/import/run.ts --dry
 import { createClient } from "@supabase/supabase-js";
 import { matches } from "../../lib/matching";
+import { sendWeeklyPush } from "../push/weekly";
 import { aldiNord } from "./adapters/aldi-nord";
 import { kaufland } from "./adapters/kaufland";
 import { edeka, lidl, netto } from "./adapters/pending";
@@ -95,6 +96,15 @@ async function main() {
   }
 
   if (db) await db.from("heartbeat").update({ seen_at: new Date().toISOString() }).eq("id", 1);
+
+  // Montags-Push mit den Schnäppchen (nur wenn gewünscht und Schlüssel hinterlegt)
+  if (db && process.env.SEND_PUSH !== "false") {
+    try {
+      await sendWeeklyPush(db, new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" }));
+    } catch (e) {
+      console.log(`– Push fehlgeschlagen: ${e instanceof Error ? e.message : e}`);
+    }
+  }
   if (failed) process.exitCode = 1; // GitHub schickt dann eine Mail über den fehlgeschlagenen Lauf
 }
 

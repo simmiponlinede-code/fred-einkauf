@@ -5,7 +5,8 @@ import type { StoreId } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { parseAmount, toCents, unitPriceCents, type BaseUnit } from "@/lib/units";
 import { today } from "@/lib/week";
-import { STORE_NAMES } from "./shared";
+import { PushSetting, ThemeSetting } from "./Settings";
+import { CATEGORIES, STORE_NAMES } from "./shared";
 
 export default function ManageView({
   data,
@@ -36,6 +37,12 @@ export default function ManageView({
     onChanged();
   }
 
+  async function saveCategory(p: Product, category: string) {
+    const { error } = await supabase().from("products").update({ category }).eq("id", p.id);
+    if (error) setMsg("Bereich konnte nicht gespeichert werden. Wurde die Migration 0002 in Supabase ausgeführt?");
+    onChanged();
+  }
+
   async function saveKeywords(p: Product, include: string, exclude: string) {
     const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
     await supabase().from("products").update({ keywords_include: split(include), keywords_exclude: split(exclude) }).eq("id", p.id);
@@ -56,6 +63,10 @@ export default function ManageView({
       </form>
 
       {msg && <div className="banner">{msg}</div>}
+
+      <div className="group-h">Einstellungen</div>
+      <ThemeSetting />
+      <PushSetting householdId={data.householdId} />
 
       <label className="card mrow">
         <input type="checkbox" checked={useCard} onChange={(e) => setUseCard(e.target.checked)} />
@@ -80,6 +91,18 @@ export default function ManageView({
               {p.active ? "Pausieren" : "Aktivieren"}
             </button>
           </summary>
+          <div className="review">
+            <label className="f">
+              Bereich im Laden (für den Einkaufsmodus)
+              <select value={p.category ?? "sonstiges"} onChange={(e) => saveCategory(p, e.target.value)}>
+                {CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.icon} {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <KeywordForm p={p} onSave={saveKeywords} />
           <PriceForm p={p} data={data} onSaved={onChanged} />
         </details>

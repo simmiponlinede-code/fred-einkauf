@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadHousehold, subscribeList, type HouseholdData, type ListItem } from "@/lib/data";
+import { flushQueue, loadHousehold, loadSnapshot, saveSnapshot, subscribeList, type HouseholdData, type ListItem } from "@/lib/data";
 import { analyze, historyLow, type Analysis } from "@/lib/pricing";
 import { supabase } from "@/lib/supabase";
 import { formatEuro } from "@/lib/units";
@@ -9,7 +9,7 @@ import { isoWeek, today } from "@/lib/week";
 import BonView from "./BonView";
 import ListView from "./ListView";
 import ManageView from "./ManageView";
-import { Fred, pct, STORE_NAMES } from "./shared";
+import { Fred, greeting, pct, STORE_NAMES, Toast } from "./shared";
 import StoresView from "./StoresView";
 
 type Tab = "liste" | "maerkte" | "bon" | "verwalten";
@@ -21,15 +21,39 @@ export default function FredApp() {
   const [tab, setTab] = useState<Tab>("liste");
   const [useCard, setUseCard] = useState(true);
   const [day, setDay] = useState<string | null>(null); // erst im Browser setzen, nicht beim Build
+  const [toast, setToast] = useState<string | null>(null);
+  const [offlineSince, setOfflineSince] = useState<string | null>(null);
+  const clearToast = useCallback(() => setToast(null), []);
 
   const reload = useCallback(async () => {
     try {
-      setData(await loadHousehold());
+      const fresh = await loadHousehold();
+      setData(fresh);
+      saveSnapshot(fresh);
+      setOfflineSince(null);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // Kein Netz (z. B. im Laden): letzten Stand vom Gerät zeigen
+      const snap = loadSnapshot();
+      if (snap) {
+        setData(snap);
+        setOfflineSince(snap.savedAt);
+      } else setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
+
+  // Offline Abgehaktes nachholen, sobald wieder Netz da ist
+  useEffect(() => {
+    const onOnline = () => flushQueue().then(() => reload());
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [reload]);
+
+  // Stand fürs Funkloch merken, auch nach dem Abhaken
+  useEffect(() => {
+    if (data && !offlineSince) saveSnapshot(data);
+  }, [data, offlineSince]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -51,9 +75,23 @@ export default function FredApp() {
   // Abhaken des Partners live übernehmen
   useEffect(() => {
     if (!data?.listId) return;
-    return subscribeList(data.listId, (item: ListItem) =>
-      setData((d) => (d ? { ...d, items: d.items.some((i) => i.id === item.id) ? d.items.map((i) => (i.id === item.id ? item : i)) : [...d.items, item] } : d)),
-    );
+    return subscribeList(data.listId, (item: ListItem, deleted: boolean) => {
+      setData((d) => {
+        if (!d) return d;
+        if (deleted) return { ...d, items: d.items.filter((i) => i.id !== item.id) };
+        const before = d.items.find((i) => i.id === item.id);
+        // Hinweis, wenn der/die andere etwas abhakt oder hinzufügt
+        if (item.checked_by && item.checked_by !== d.me && item.checked_at && !before?.checked_at) {
+          const who = d.members.find((m) => m.user_id === item.checked_by)?.display_name ?? "Jemand";
+          const what = d.products.find((p) => p.id === item.product_id)?.name ?? item.free_text ?? "etwas";
+          setToast(`${who} hat ${what} abgehakt`);
+        } else if (!before && item.free_text && item.created_by && item.created_by !== d.me) {
+          const who = d.members.find((m) => m.user_id === item.created_by)?.display_name ?? "Jemand";
+          setToast(`${who} hat ${item.free_text} auf die Liste gesetzt`);
+        }
+        return { ...d, items: before ? d.items.map((i) => (i.id === item.id ? item : i)) : [...d.items, item] };
+      });
+    });
   }, [data?.listId]);
 
   const analyses = useMemo(() => {
@@ -91,6 +129,8 @@ export default function FredApp() {
       </main>
     );
 
+  // data gibt es nur im Browser, die Uhrzeit ist hier also die des Handys
+  const hello = greeting(data.members.find((m) => m.user_id === data.me)?.display_name);
   const active = data.products.filter((p) => p.active);
   const deals = active.filter((p) => analyses.get(p.id)?.isDeal);
   const total = active.reduce((s, p) => s + (analyses.get(p.id)?.best?.price_cents ?? 0), 0);
@@ -114,6 +154,7 @@ export default function FredApp() {
               <br />
               <span className="grad">Spar bei jedem Einkauf.</span>
             </h1>
+            {hello && <div className="hello">{hello}</div>}
             <div className="sub">
               Woche <b>{isoWeek().split("-W")[1]}</b> · {deals.length} von {active.length} Produkten im Angebot
             </div>
@@ -121,6 +162,12 @@ export default function FredApp() {
           <img className="herofred" src="/fred/fred-1-begruessung.webp" alt="Fred, der Dachs, zwinkert dir zu" width={132} height={132} />
         </div>
       </header>
+
+      {offlineSince && (
+        <div className="banner">
+          Kein Netz: Fred zeigt den Stand von {new Date(offlineSince).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}. Abgehaktes wird nachgeholt.
+        </div>
+      )}
 
       {failedImports.length > 0 && (
         <div className="banner">
@@ -182,12 +229,13 @@ export default function FredApp() {
         ))}
       </nav>
 
-      {tab === "liste" && <ListView data={data} analyses={analyses} onChange={setData} />}
+      {tab === "liste" && <ListView data={data} analyses={analyses} onChange={setData} reload={reload} />}
       {tab === "maerkte" && <StoresView data={data} analyses={analyses} useCard={useCard} />}
       {tab === "bon" && <BonView data={data} onSaved={reload} />}
       {tab === "verwalten" && <ManageView data={data} onChanged={reload} useCard={useCard} setUseCard={setUseCard} />}
 
       <p className="foot">
+        <Toast text={toast} onDone={clearToast} />
         Angebote aus den Angebotsseiten der Märkte, Normalpreise aus euren Bons. Preise ohne Gewähr; im Laden zählt das Preisschild.
       </p>
     </main>

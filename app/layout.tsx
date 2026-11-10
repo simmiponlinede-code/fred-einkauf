@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import ServiceWorker from "@/components/ServiceWorker";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 // Schriften als npm-Pakete: werden mit der App ausgeliefert, kein Abruf bei Google
 import "@fontsource/nunito/400.css";
 import "@fontsource/nunito/700.css";
@@ -26,7 +27,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de">
+    <html lang="de" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body>
         {children}
         <ServiceWorker />

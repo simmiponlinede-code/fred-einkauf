@@ -10,6 +10,10 @@ on:
       stores:
         description: "Nur bestimmte Märkte, z. B. aldi-nord,kaufland (leer = alle)"
         required: false
+      push:
+        description: "Push-Nachricht an eure Handys schicken"
+        type: boolean
+        default: true
 
 jobs:
   import:
@@ -28,3 +32,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           KAUFLAND_STORE_URL: ${{ vars.KAUFLAND_STORE_URL }}
           IMPORT_STORES: ${{ inputs.stores }}
+          SEND_PUSH: ${{ github.event_name == 'schedule' || inputs.push }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
