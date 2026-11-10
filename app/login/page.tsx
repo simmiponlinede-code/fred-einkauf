@@ -14,10 +14,23 @@ export default function Login() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error } = await supabase().auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (error) setError("Das hat nicht geklappt. Prüfe E-Mail und Passwort.");
-    else router.replace("/");
+    try {
+      const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
+      if (!error) {
+        router.replace("/");
+        return;
+      }
+      const code = (error as { code?: string }).code ?? "";
+      if (code === "email_not_confirmed" || /not confirmed/i.test(error.message))
+        setError("Dein Konto ist noch nicht bestätigt. In Supabase beim Konto „Confirm email“ wählen oder es mit Haken bei „Auto Confirm User“ neu anlegen.");
+      else if (code === "invalid_credentials" || /invalid login/i.test(error.message))
+        setError("E-Mail oder Passwort stimmen nicht. Groß- und Kleinschreibung beim Passwort beachten.");
+      else setError(`Anmeldung fehlgeschlagen: ${error.message}`);
+    } catch (e) {
+      setError(`Fred erreicht Supabase nicht: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
