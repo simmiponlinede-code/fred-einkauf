@@ -1,7 +1,7 @@
 // Montags-Push: nach dem Import bekommt jedes Haushaltsmitglied eine Nachricht mit den
 // Schnäppchen der Woche. Web Push mit eigenen VAPID-Schlüsseln, kein Drittanbieter, kostenlos.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import webpush from "web-push";
+import * as webpush from "web-push";
 import { analyze, type Observation, type Offer } from "../../lib/pricing";
 import type { BaseUnit } from "../../lib/units";
 
