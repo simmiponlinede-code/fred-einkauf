@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { addFreeItem, deleteItem, queueCheck, setChecked, setMatch, setQty, type HouseholdData, type ListItem, type Product } from "@/lib/data";
 import type { Analysis, Pick } from "@/lib/pricing";
 import { formatEuro } from "@/lib/units";
+import Scanner from "./Scanner";
 import { CATEGORIES, categoryIndex, Confetti, Fred, pct, PriceTag, STORE_NAMES, StoreChip, unitPrice } from "./shared";
 
 interface Row {
@@ -26,6 +27,7 @@ export default function ListView({
   const [shopMode, setShopMode] = useState(false);
   const [freeText, setFreeText] = useState("");
   const [celebrate, setCelebrate] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const names = new Map(data.members.map((m) => [m.user_id, m.display_name]));
   const productById = new Map(data.products.map((p) => [p.id, p]));
 
@@ -145,9 +147,15 @@ export default function ListView({
   return (
     <section className={`list${shopMode ? " shopmode" : ""}`} aria-live="polite">
       <Confetti show={celebrate} />
+      {scanning && (
+        <Scanner data={data} analyses={analyses} onClose={() => setScanning(false)} onChanged={(d) => (d ? onChange(d) : reload())} />
+      )}
       <div className="listbar">
         <button className={`btn ${shopMode ? "primary" : "ghost"}`} onClick={() => setShopMode(!shopMode)} aria-pressed={shopMode}>
           {shopMode ? "✓ Im Laden" : "🛒 Einkaufsmodus"}
+        </button>
+        <button className="btn ghost" onClick={() => setScanning(true)}>
+          📷 Scannen
         </button>
         <span className="note">
           {open.length ? `${open.length} offen` : "Alles erledigt!"} · {done.length} im Wagen

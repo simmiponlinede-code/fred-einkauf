@@ -328,3 +328,52 @@ export async function addManualOffer(o: {
 export async function deleteManualOffer(offerId: string) {
   must(await supabase().from("offers").delete().eq("id", offerId));
 }
+
+// ---------------------------------------------------------------
+// Barcodes
+// ---------------------------------------------------------------
+export interface BarcodeLink {
+  ean: string;
+  product_id: string;
+  label: string | null;
+  pack_text: string | null;
+}
+
+export async function findBarcode(ean: string): Promise<BarcodeLink | null> {
+  return must(await supabase().from("product_barcodes").select("ean, product_id, label, pack_text").eq("ean", ean).maybeSingle()) as BarcodeLink | null;
+}
+
+export async function saveBarcode(householdId: string, link: BarcodeLink) {
+  must(await supabase().from("product_barcodes").upsert({ household_id: householdId, ...link }, { onConflict: "household_id,ean" }));
+}
+
+/**
+ * Produktname zum Barcode aus Open Food Facts (freie, offene Datenbank, kostenlos, ohne Schlüssel).
+ * Übertragen wird nur die Barcode-Nummer.
+ */
+export async function lookupOpenFoodFacts(ean: string): Promise<{ name: string; quantity: string | null } | null> {
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${ean}.json?fields=product_name,product_name_de,brands,quantity`);
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (j.status !== 1 || !j.product) return null;
+    const p = j.product;
+    const name = [p.brands?.split(",")[0]?.trim(), p.product_name_de || p.product_name].filter(Boolean).join(" ");
+    return name ? { name, quantity: p.quantity || null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Produkt auf die Wochenliste setzen; ist es schon drauf, Anzahl +1. */
+export async function addProductToList(listId: string, householdId: string, productId: string, items: ListItem[]): Promise<ListItem> {
+  const existing = items.find((i) => i.product_id === productId);
+  if (existing) {
+    const qty = (existing.qty ?? 1) + (existing.checked_at ? 0 : 1);
+    must(await supabase().from("list_items").update({ qty, checked_at: null, checked_by: null }).eq("id", existing.id));
+    return { ...existing, qty, checked_at: null, checked_by: null };
+  }
+  return must(
+    await supabase().from("list_items").insert({ list_id: listId, household_id: householdId, product_id: productId }).select().single(),
+  ) as ListItem;
+}
