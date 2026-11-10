@@ -16,12 +16,13 @@ Eure gemeinsame Einkaufsliste mit Angeboten und Normalpreisen aus Göttingen. L�
 1. Auf [supabase.com](https://supabase.com) ein Projekt anlegen (Region Frankfurt, Free Plan, keine Kreditkarte nötig).
 2. **SQL Editor** öffnen und nacheinander ausführen:
    1. `supabase/migrations/0001_schema.sql`
-3. **Authentication → Sign In / Providers → Email**: „Allow new users to sign up“ **aus**, „Confirm email“ **aus**.
-4. **Authentication → Users → Add user → Create new user**: eure zwei Konten mit E-Mail und Passwort anlegen.
-5. Im SQL Editor `supabase/setup_household.sql` öffnen, die zwei E-Mail-Adressen und Namen eintragen, ausführen.
+3. **Authentication → URL Configuration**: „Site URL“ auf eure App-Adresse setzen (z. B. `https://fred-einkauf.vercel.app`) und unter „Redirect URLs“ `https://fred-einkauf.vercel.app/**` hinzufügen. Sonst führen Mails zum Passwort-Zurücksetzen auf `localhost`.
+4. **Authentication → Sign In / Providers → Email**: „Allow new users to sign up“ **aus**, „Confirm email“ **aus**.
+5. **Authentication → Users → Add user → Create new user**: eure zwei Konten mit E-Mail und Passwort anlegen.
+6. Im SQL Editor `supabase/setup_household.sql` öffnen, die zwei E-Mail-Adressen und Namen eintragen, ausführen.
    Die letzte Abfrage muss zwei Zeilen zeigen.
-6. Danach `supabase/seed_from_v1.sql` ausführen: übernimmt Produkte, Normalpreise und gelernte Bon-Kürzel aus der ersten Fred-Version.
-7. **Project Settings → API**: `Project URL`, den `publishable`-Schlüssel (früher „anon“) und den `secret`-Schlüssel (früher „service_role“) notieren.
+7. Danach `supabase/seed_from_v1.sql` ausführen: übernimmt Produkte, Normalpreise und gelernte Bon-Kürzel aus der ersten Fred-Version.
+8. **Project Settings → API**: `Project URL`, den `publishable`-Schlüssel (früher „anon“) und den `secret`-Schlüssel (früher „service_role“) notieren.
    **Database → Connect → Session pooler**: die Verbindungs-URL notieren (für das Backup; GitHub Actions kann die direkte IPv6-Adresse nicht erreichen).
 
 ### 2. GitHub

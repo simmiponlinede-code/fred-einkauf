@@ -10,6 +10,23 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  async function forgot() {
+    if (!email.trim()) return setError("Trag oben zuerst deine E-Mail-Adresse ein.");
+    setBusy(true);
+    const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/passwort`,
+    });
+    setBusy(false);
+    // Supabase Free verschickt nur wenige Mails pro Stunde
+    setError(
+      error
+        ? /rate|limit/i.test(error.message)
+          ? "Gerade wurden zu viele Mails verschickt. Bitte in einer Stunde nochmal versuchen."
+          : `Mail konnte nicht verschickt werden: ${error.message}`
+        : "Mail ist unterwegs. Tippe auf den Link darin, dann kannst du ein neues Passwort setzen.",
+    );
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -53,6 +70,9 @@ export default function Login() {
         {error && <p className="err">{error}</p>}
         <button className="btn primary" disabled={busy}>
           {busy ? "Melde an …" : "Anmelden"}
+        </button>
+        <button type="button" className="btn ghost" onClick={forgot} disabled={busy}>
+          Passwort vergessen?
         </button>
       </form>
     </main>
